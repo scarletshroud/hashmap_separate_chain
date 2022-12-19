@@ -27,5 +27,7 @@ jobs:
            rebar3 lint
     - name: Format
       run: rebar3 steamroll
-    - name: Run tests
-      run: rebar3 eunit, proper
+    - name: Run unit tests
+      run: rebar3 do eunit
+    - name: Run proper tests
+      run: rebar3 proper
