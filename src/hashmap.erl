@@ -5,6 +5,7 @@
 -export(
   [
     hashmap_init/0,
+    hashmap_init_from_list/1,
     hashmap_init/1,
     hashmap_add/3,
     hashmap_get/2,
@@ -12,23 +13,46 @@
     hashmap_filter/2,
     hashmap_map/2,
     hashmap_foldl/3,
-    hashmap_foldr/3
+    hashmap_foldr/3,
+    hashmap_is_equal/2,
+    hashmap_merge/2
   ]
 ).
 
 -import(erlang, [phash2/1]).
 
--opaque map_t() :: #hashmap{buckets :: array:new(10), buckets_amount :: 10, size :: 0}.
+hashmap_fill(Buckets, Index, BucketsAmount) when Index >= BucketsAmount -> Buckets;
 
--export_type([map_t/0]).
+hashmap_fill(Buckets, Index, BucketsAmount) when Index < BucketsAmount ->
+  hashmap_fill(array:set(Index, [], Buckets), Index + 1, BucketsAmount).
 
-hashmap_init() -> #hashmap{buckets = array:new(10), buckets_amount = 10, size = 0}.
+hashmap_fill(Hashmap, []) -> Hashmap;
 
-hashmap_init(Size) -> #hashmap{buckets = array:new(Size), buckets_amount = Size, size = 0}.
+hashmap_fill(Hashmap, [Element | Tail]) ->
+  NewHashmap = hashmap_add(Hashmap, element(1, Element), element(2, Element)),
+  hashmap_fill(NewHashmap, Tail).
 
-get_bucket_index(Map, Key) ->
+
+hashmap_init() ->
+  Buckets = array:new(10),
+  FilledBuckets = hashmap_fill(Buckets, 0, 10),
+  #hashmap{buckets = FilledBuckets, buckets_amount = 10, buckets_size = 0, elements_size = 0}.
+
+
+hashmap_init(Size) ->
+  Buckets = array:new(Size),
+  FilledBuckets = hashmap_fill(Buckets, 0, Size),
+  #hashmap{buckets = FilledBuckets, buckets_amount = Size, buckets_size = 0, elements_size = 0}.
+
+
+hashmap_init_from_list(List) ->
+  Empty = hashmap_init(),
+  hashmap_fill(Empty, List).
+
+
+get_bucket_index(Hashmap, Key) ->
   HashCode = phash2(Key),
-  Index = HashCode rem Map#hashmap.buckets_amount,
+  Index = HashCode rem Hashmap#hashmap.buckets_amount,
   if
     (Index < 0) -> -1 * Index;
     (Index >= 0) -> Index
@@ -47,83 +71,86 @@ search_chain_key(Chain, Key, HashCode, I) ->
   end.
 
 
-hashmap_remove(Map, Key) ->
-  Index = get_bucket_index(Map, Key),
+hashmap_remove(Hashmap, Key) ->
+  Index = get_bucket_index(Hashmap, Key),
   HashCode = phash2(Key),
-  Bucket = array:get(Index, Map#hashmap.buckets),
+  Bucket = array:get(Index, Hashmap#hashmap.buckets),
   case Bucket of
-    undefined -> Map;
+    [] -> Hashmap;
 
     _ ->
       Node = search_chain_key(Bucket, Key, HashCode),
       case Node of
-        false -> Map;
+        false -> Hashmap;
 
         _ ->
           NewBucket =
             lists:sublist(Bucket, element(2, Node) - 1) ++ lists:nthtail(element(2, Node), Bucket),
           case length(NewBucket) of
-            0 -> NewBuckets = array:set(Index, undefined, Map#hashmap.buckets);
-            _ -> NewBuckets = array:set(Index, NewBucket, Map#hashmap.buckets)
+            0 ->
+              NewBuckets = array:set(Index, [], Hashmap#hashmap.buckets),
+              BucketsSize = Hashmap#hashmap.buckets_size - 1;
+
+            _ ->
+              NewBuckets = array:set(Index, NewBucket, Hashmap#hashmap.buckets),
+              BucketsSize = Hashmap#hashmap.buckets_size
           end,
           #hashmap{
             buckets = NewBuckets,
-            buckets_amount = Map#hashmap.buckets_amount,
-            size = Map#hashmap.size - 1
+            buckets_amount = Hashmap#hashmap.buckets_amount,
+            buckets_size = BucketsSize,
+            elements_size = Hashmap#hashmap.elements_size - 1
           }
       end
   end.
 
 
-hashmap_get(Map, Key) ->
-  Index = get_bucket_index(Map, Key),
+hashmap_get(Hashmap, Key) ->
+  Index = get_bucket_index(Hashmap, Key),
   HashCode = phash2(Key),
-  Head = array:get(Index, Map#hashmap.buckets),
+  Head = array:get(Index, Hashmap#hashmap.buckets),
   case Head of
-    undefined -> false;
-    Chain -> element(1, search_chain_key(Chain, Key, HashCode))
+    [] -> false;
+
+    Chain ->
+      case search_chain_key(Chain, Key, HashCode) of
+        false -> false;
+        Element -> element(1, Element)
+      end
   end.
 
 
-rearrange_hashmap_bucket(Bucket, NewHashmap, Index) ->
-  case Index =< length(Bucket) of
-    true ->
-      Element = lists:nth(Index, Bucket),
-      TmpHashmap = hashmap_add(NewHashmap, Element#node.key, Element#node.value),
-      rearrange_hashmap_bucket(Bucket, TmpHashmap, Index);
-
-    false -> NewHashmap
-  end.
-
-
-rearrange_hashmap(OldHashmap, NewHashmap, Index) ->
-  OldBucket = array:get(Index, OldHashmap#hashmap.buckets),
-  case OldBucket of
-    undefined -> rearrange_hashmap(OldHashmap, NewHashmap, Index + 1);
-    Bucket -> rearrange_hashmap_bucket(Bucket, NewHashmap, Index)
-  end.
-
-
-rearrange_hashmap(OldHashmap, NewHashmap) -> rearrange_hashmap(OldHashmap, NewHashmap, 1).
+rearrange_hashmap(OldHashmap, NewHashmap) ->
+  hashmap_foldl(
+    OldHashmap,
+    fun (Element, Hashmap) -> hashmap_add(Hashmap, Element#node.key, Element#node.value) end,
+    NewHashmap
+  ).
 
 grow_hashmap(Hashmap) ->
   NewHashmap = hashmap_init(Hashmap#hashmap.buckets_amount * ?GROW_COEFFICIENT),
   rearrange_hashmap(Hashmap, NewHashmap).
 
 
-hashmap_add(Map, Key, Value) ->
-  Index = get_bucket_index(Map, Key),
+hashmap_add(Hashmap, Key, Value) ->
+  Index = get_bucket_index(Hashmap, Key),
   HashCode = phash2(Key),
-  Bucket = array:get(Index, Map#hashmap.buckets),
+  Bucket = array:get(Index, Hashmap#hashmap.buckets),
   case Bucket of
-    undefined ->
+    [] ->
       NewNode = #node{key = Key, value = Value, hashcode = HashCode},
-      NewBuckets = array:set(Index, [NewNode], Map#hashmap.buckets),
-      #hashmap{
-        buckets = NewBuckets,
-        buckets_amount = Map#hashmap.buckets_amount,
-        size = Map#hashmap.size + 1
-      };
+      NewBuckets = array:set(Index, [NewNode], Hashmap#hashmap.buckets),
+      NewHashmap =
+        #hashmap{
+          buckets = NewBuckets,
+          buckets_amount = Hashmap#hashmap.buckets_amount,
+          buckets_size = Hashmap#hashmap.buckets_size + 1,
+          elements_size = Hashmap#hashmap.elements_size + 1
+        },
+      case (Hashmap#hashmap.buckets_size + 1) / Hashmap#hashmap.buckets_amount >= ?LOAD_LIMIT of
+        true -> grow_hashmap(NewHashmap);
+        false -> NewHashmap
+      end;
 
     Chain ->
       Node = search_chain_key(Chain, Key, HashCode),
@@ -131,9 +158,10 @@ hashmap_add(Map, Key, Value) ->
         false ->
           NewNode = #node{key = Key, value = Value, hashcode = HashCode},
           #hashmap{
-            buckets = array:set(Index, [NewNode | Chain], Map#hashmap.buckets),
-            buckets_amount = Map#hashmap.buckets_amount,
-            size = Map#hashmap.size
+            buckets = array:set(Index, [NewNode | Chain], Hashmap#hashmap.buckets),
+            buckets_amount = Hashmap#hashmap.buckets_amount,
+            buckets_size = Hashmap#hashmap.buckets_size,
+            elements_size = Hashmap#hashmap.elements_size + 1
           };
 
         _ ->
@@ -144,158 +172,136 @@ hashmap_add(Map, Key, Value) ->
             [NewNode]
             ++
             lists:nthtail(element(2, Node), Bucket),
-          NewBuckets = array:set(Index, NewBucket, Map#hashmap.buckets),
-          case Map#hashmap.size + 1 / Map#hashmap.buckets_amount > ?LOAD_LIMIT of
-            true -> grow_hashmap(Map);
-
-            false ->
-              #hashmap{
-                buckets = NewBuckets,
-                buckets_amount = Map#hashmap.buckets_amount,
-                size = Map#hashmap.size
-              }
-          end
+          NewBuckets = array:set(Index, NewBucket, Hashmap#hashmap.buckets),
+          #hashmap{
+            buckets = NewBuckets,
+            buckets_amount = Hashmap#hashmap.buckets_amount,
+            buckets_size = Hashmap#hashmap.buckets_size,
+            elements_size = Hashmap#hashmap.elements_size
+          }
       end
   end.
 
 
-hashmap_filter(Map, Pred) ->
+hashmap_filter(Hashmap, Pred) ->
   NewBuckets =
     array:map(
       fun
         (_, Bucket) ->
           case Bucket of
-            undefined -> Bucket;
+            [] -> Bucket;
 
             _ ->
               FilteredList = lists:filter(Pred, Bucket),
               case length(FilteredList) of
-                0 -> undefined;
+                0 -> [];
                 _ -> FilteredList
               end
           end
       end,
-      Map#hashmap.buckets
+      Hashmap#hashmap.buckets
     ),
   Size =
     array:foldl(
       fun
         (_, Bucket, Acc) ->
           case Bucket of
-            undefined -> Acc;
+            [] -> Acc;
             _ -> Acc + 1
           end
       end,
       0,
       NewBuckets
     ),
-  #hashmap{buckets = NewBuckets, buckets_amount = Map#hashmap.buckets_amount, size = Size}.
+  #hashmap{
+    buckets = NewBuckets,
+    buckets_amount = Hashmap#hashmap.buckets_amount,
+    buckets_size = Size,
+    elements_size = Hashmap#hashmap.elements_size
+  }.
 
 
-hashmap_map(Map, Fun) ->
+hashmap_map(Hashmap, Fun) ->
   NewBuckets =
     array:map(
       fun
         (_, Bucket) ->
           case Bucket of
-            undefined -> Bucket;
+            [] -> Bucket;
             _ -> lists:map(Fun, Bucket)
           end
       end,
-      Map#hashmap.buckets
+      Hashmap#hashmap.buckets
     ),
   #hashmap{
     buckets = NewBuckets,
-    buckets_amount = Map#hashmap.buckets_amount,
-    size = Map#hashmap.size
+    buckets_amount = Hashmap#hashmap.buckets_amount,
+    buckets_size = Hashmap#hashmap.buckets_size,
+    elements_size = Hashmap#hashmap.elements_size
   }.
 
 
-hashmap_foldl(Map, Fun, InitAcc) ->
+hashmap_foldl(Hashmap, Fun, InitAcc) ->
   array:foldl(
     fun
       (_, Bucket, Acc) ->
         case Bucket of
-          undefined -> Acc;
+          [] -> Acc;
           _ -> lists:foldl(Fun, Acc, Bucket)
         end
     end,
     InitAcc,
-    Map#hashmap.buckets
+    Hashmap#hashmap.buckets
   ).
 
 
-hashmap_foldr(Map, Fun, InitAcc) ->
+hashmap_foldr(Hashmap, Fun, InitAcc) ->
   array:foldr(
     fun
       (_, Bucket, Acc) ->
         case Bucket of
-          undefined -> Acc;
+          [] -> Acc;
           _ -> lists:foldr(Fun, Acc, Bucket)
         end
     end,
     InitAcc,
-    Map#hashmap.buckets
+    Hashmap#hashmap.buckets
   ).
 
 
-% copy_map(FirstMap, SecondMap, I) ->
-%   FirstMapBucket = array:get(I, FirstMap#hashmap.buckets),
-%   SecondMapBucket = array:get(I, SecondMap#hashmap.buckets),
-%   Buckets = {FirstMapBucket, SecondMapBucket},
-%   case Buckets of
-%     {undefined, undefined} -> array:set(I, undefined, map);
-%     {undefined, _} -> ;
-%     {_, undefined} -> ;
-%   end
-% merge(FirstMap, SecondMap) ->
-%   case FirstMap#hashmap.size >= SecondMap#map.size of
-%     true -> copyMap(FirstMap, SecondMap),
-%     false -> copyMap(SecondMap, FirstMap)
-%   end.
-compare_bucket(_, _, Index, BucketSize) when Index > BucketSize -> true;
+compare_buckets(FirstHashmap, SecondHashmap) ->
+  hashmap_foldl(
+    FirstHashmap,
+    fun
+      (Element, Acc) ->
+        case (hashmap_get(SecondHashmap, Element#node.key)) of
+          false -> false;
 
-compare_bucket(FirstBucket, SecondBucket, Index, BucketSize) when Index =< BucketSize ->
-  FirstBucketNode = lists:nth(Index, FirstBucket),
-  SecondBucketNode = lists:nth(Index, SecondBucket),
-  case
-  (FirstBucketNode#node.key == SecondBucketNode#node.key)
-  and
-  (FirstBucketNode#node.value == SecondBucketNode#node.value) of
-    true -> compare_bucket(FirstBucket, SecondBucket, Index + 1, BucketSize);
-    false -> false
-  end.
+          SecondElement ->
+            case Element#node.value == SecondElement#node.value of
+              true -> Acc;
+              false -> false
+            end
+        end
+    end,
+    true
+  ).
 
 
-compare_buckets(_, _, Index, BucketsSize) when Index > BucketsSize -> true;
-
-compare_buckets(FirstHashmap, SecondHashmap, Index, BucketsSize) when Index =< BucketsSize ->
-  FirstBucket = array:get(Index, FirstHashmap#hashmap.buckets),
-  SecondBucket = array:get(Index, SecondHashmap#hashmap.buckets),
-  BucketSize = length(FirstBucket),
-  case compare_bucket(FirstBucket, SecondBucket, 1, BucketSize) of
-    true ->
-      %check undefined
-      compare_buckets(FirstHashmap, SecondHashmap, Index + 1, BucketSize);
-
-    false -> false
-  end.
-
-
-is_equal(FirstHashmap, SecondHashmap) ->
+hashmap_is_equal(FirstHashmap, SecondHashmap) ->
   case
   (FirstHashmap#hashmap.buckets_amount == SecondHashmap#hashmap.buckets_amount)
   and
-  (FirstHashmap#hashmap.size == SecondHashmap#hashmap.size) of
-    true -> compare_buckets(FirstHashmap, SecondHashmap, 1, FirstHashmap#hashmap.buckets_amount);
+  (FirstHashmap#hashmap.elements_size == SecondHashmap#hashmap.elements_size) of
+    true -> compare_buckets(FirstHashmap, SecondHashmap);
     false -> false
   end.
 
 
-% start() ->
-%   Users = hashmap_init(),
-%   OneUser = hashmap_add(Users, "John", 1),
-%   TwoUsers = hashmap_add(OneUser, "Sam", 2),
-%   ThreeUsers = hashmap_add(TwoUsers, "Kate", 3),
-%   Result = hashmap_foldl(ThreeUsers, fun(Element, Acc) -> Acc + Element#node.value end, 0),
-%   io:format("~w~n", [Result]).
+hashmap_merge(FirstHashmap, SecondHashmap) ->
+  case FirstHashmap#hashmap.buckets_amount > SecondHashmap#hashmap.buckets_amount of
+    true -> NewHashmap = hashmap_init(FirstHashmap#hashmap.buckets_amount);
+    false -> NewHashmap = hashmap_init(SecondHashmap#hashmap.buckets_amount)
+  end,
+  FirstMerge = rearrange_hashmap(FirstHashmap, NewHashmap),
+  rearrange_hashmap(SecondHashmap, FirstMerge).
