@@ -29,3 +29,4 @@ jobs:
       run: rebar3 steamroll
     - name: Run tests
       run: rebar3 do eunit, ct
+           rebar3 proper
