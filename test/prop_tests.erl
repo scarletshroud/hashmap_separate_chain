@@ -11,10 +11,7 @@
     hashmap_init_from_list/1,
     hashmap_add/3,
     hashmap_remove/2,
-    hashmap_get/2,
-    hashmap_filter/2,
-    hashmap_map/2,
-    hashmap_foldl/3,
+    hashmap_get_value/2,
     hashmap_is_equal/2,
     hashmap_merge/2
   ]
@@ -29,7 +26,7 @@ get_property_test_result(Property) ->
 
 check_hashmap_addition(OldHashmap, NewHashmap, Key) -> 
     (OldHashmap#hashmap.elements_size + 1 == NewHashmap#hashmap.elements_size)
-    and (hashmap_get(NewHashmap, Key) /= false).
+    and (hashmap_get_value(NewHashmap, Key) /= false).
 
 prop_add_element() -> 
     ?FORALL({List, {Key, Value}},
@@ -37,7 +34,7 @@ prop_add_element() ->
         ?IMPLIES(
             begin
                 Hashmap = hashmap_init_from_list(List), 
-                hashmap_get(Hashmap, Key) == false
+                hashmap_get_value(Hashmap, Key) == false
             end,
             begin
                 Hashmap = hashmap_init_from_list(List), 
@@ -51,20 +48,20 @@ check_hashmap_removal(OldHashmap, NewHashmap, Key, OldElement) ->
     case OldElement of 
         false -> 
             (OldHashmap#hashmap.elements_size == NewHashmap#hashmap.elements_size)
-            and (hashmap_get(NewHashmap, Key) == false);
+            and (hashmap_get_value(NewHashmap, Key) == false);
         _ ->
             (OldHashmap#hashmap.elements_size - 1 == NewHashmap#hashmap.elements_size)
-            and (hashmap_get(NewHashmap, Key) == false)
+            and (hashmap_get_value(NewHashmap, Key) == false)
     end.
 
 prop_remove_element() -> 
-    ?FORALL({List, {Key, Value}},
+    ?FORALL({List, {Key, _}},
         {list({integer(), integer()}), {integer(), integer()}},
         begin
             Hashmap = hashmap_init_from_list(List),
-            OldElement = hashmap_get(Hashmap, Key),
+            OldElementValue = hashmap_get_value(Hashmap, Key),
             NewHashmap = hashmap_remove(Hashmap, Key),
-            check_hashmap_removal(Hashmap, NewHashmap, Key, OldElement)
+            check_hashmap_removal(Hashmap, NewHashmap, Key, OldElementValue)
         end
     ).
 

@@ -8,12 +8,11 @@
     hashmap_init_from_list/1,
     hashmap_init/1,
     hashmap_add/3,
-    hashmap_get/2,
+    hashmap_get_value/2,
     hashmap_remove/2,
     hashmap_filter/2,
     hashmap_map/2,
-    hashmap_foldl/3,
-    hashmap_foldr/3,
+    hashmap_fold/3,
     hashmap_is_equal/2,
     hashmap_merge/2
   ]
@@ -29,7 +28,8 @@ hashmap_fill(Buckets, Index, BucketsAmount) when Index < BucketsAmount ->
 hashmap_fill(Hashmap, []) -> Hashmap;
 
 hashmap_fill(Hashmap, [Element | Tail]) ->
-  NewHashmap = hashmap_add(Hashmap, element(1, Element), element(2, Element)),
+  {Key, Value} = Element,
+  NewHashmap = hashmap_add(Hashmap, Key, Value),
   hashmap_fill(NewHashmap, Tail).
 
 
@@ -79,13 +79,12 @@ hashmap_remove(Hashmap, Key) ->
     [] -> Hashmap;
 
     _ ->
-      Node = search_chain_key(Bucket, Key, HashCode),
-      case Node of
+      SearchResult = search_chain_key(Bucket, Key, HashCode),
+      case SearchResult of
         false -> Hashmap;
 
-        _ ->
-          NewBucket =
-            lists:sublist(Bucket, element(2, Node) - 1) ++ lists:nthtail(element(2, Node), Bucket),
+        {_, NodeIndex} ->
+          NewBucket = lists:sublist(Bucket, NodeIndex - 1) ++ lists:nthtail(NodeIndex, Bucket),
           case length(NewBucket) of
             0 ->
               NewBuckets = array:set(Index, [], Hashmap#hashmap.buckets),
@@ -105,7 +104,7 @@ hashmap_remove(Hashmap, Key) ->
   end.
 
 
-hashmap_get(Hashmap, Key) ->
+hashmap_get_value(Hashmap, Key) ->
   Index = get_bucket_index(Hashmap, Key),
   HashCode = phash2(Key),
   Head = array:get(Index, Hashmap#hashmap.buckets),
@@ -115,13 +114,13 @@ hashmap_get(Hashmap, Key) ->
     Chain ->
       case search_chain_key(Chain, Key, HashCode) of
         false -> false;
-        Element -> element(1, Element)
+        {Node, _} -> Node#node.value
       end
   end.
 
 
 rearrange_hashmap(OldHashmap, NewHashmap) ->
-  hashmap_foldl(
+  hashmap_fold(
     OldHashmap,
     fun (Element, Hashmap) -> hashmap_add(Hashmap, Element#node.key, Element#node.value) end,
     NewHashmap
@@ -153,8 +152,8 @@ hashmap_add(Hashmap, Key, Value) ->
       end;
 
     Chain ->
-      Node = search_chain_key(Chain, Key, HashCode),
-      case Node of
+      SearchResult = search_chain_key(Chain, Key, HashCode),
+      case SearchResult of
         false ->
           NewNode = #node{key = Key, value = Value, hashcode = HashCode},
           #hashmap{
@@ -164,14 +163,10 @@ hashmap_add(Hashmap, Key, Value) ->
             elements_size = Hashmap#hashmap.elements_size + 1
           };
 
-        _ ->
+        {_, NodeIndex} ->
           NewNode = #node{key = Key, value = Value, hashcode = HashCode},
           NewBucket =
-            lists:sublist(Bucket, element(2, Node) - 1)
-            ++
-            [NewNode]
-            ++
-            lists:nthtail(element(2, Node), Bucket),
+            lists:sublist(Bucket, NodeIndex - 1) ++ [NewNode] ++ lists:nthtail(NodeIndex, Bucket),
           NewBuckets = array:set(Index, NewBucket, Hashmap#hashmap.buckets),
           #hashmap{
             buckets = NewBuckets,
@@ -241,7 +236,7 @@ hashmap_map(Hashmap, Fun) ->
   }.
 
 
-hashmap_foldl(Hashmap, Fun, InitAcc) ->
+hashmap_fold(Hashmap, Fun, InitAcc) ->
   array:foldl(
     fun
       (_, Bucket, Acc) ->
@@ -255,30 +250,16 @@ hashmap_foldl(Hashmap, Fun, InitAcc) ->
   ).
 
 
-hashmap_foldr(Hashmap, Fun, InitAcc) ->
-  array:foldr(
-    fun
-      (_, Bucket, Acc) ->
-        case Bucket of
-          [] -> Acc;
-          _ -> lists:foldr(Fun, Acc, Bucket)
-        end
-    end,
-    InitAcc,
-    Hashmap#hashmap.buckets
-  ).
-
-
 compare_buckets(FirstHashmap, SecondHashmap) ->
-  hashmap_foldl(
+  hashmap_fold(
     FirstHashmap,
     fun
       (Element, Acc) ->
-        case (hashmap_get(SecondHashmap, Element#node.key)) of
+        case (hashmap_get_value(SecondHashmap, Element#node.key)) of
           false -> false;
 
-          SecondElement ->
-            case Element#node.value == SecondElement#node.value of
+          Value ->
+            case Element#node.value == Value of
               true -> Acc;
               false -> false
             end

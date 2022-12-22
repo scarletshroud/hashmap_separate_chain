@@ -6,10 +6,10 @@
     hashmap_init/0,
     hashmap_add/3,
     hashmap_remove/2,
-    hashmap_get/2,
+    hashmap_get_value/2,
     hashmap_filter/2,
     hashmap_map/2,
-    hashmap_foldl/3,
+    hashmap_fold/3,
     hashmap_is_equal/2,
     hashmap_merge/2
   ]
@@ -22,8 +22,8 @@ add_test() ->
   Genders = hashmap_init(),
   OneGender = hashmap_add(Genders, "Male", 1),
   TwoGenders = hashmap_add(OneGender, "Female", 2),
-  Gender = hashmap_get(TwoGenders, "Male"),
-  ?assertEqual("Male", Gender#node.key),
+  GenderValue = hashmap_get_value(TwoGenders, "Male"),
+  ?assertEqual(1, GenderValue),
   ?assertEqual(2, TwoGenders#hashmap.buckets_size).
 
 
@@ -33,19 +33,19 @@ remove_test() ->
   TwoUsers = hashmap_add(OneUser, "Sam", 2),
   ThreeUsers = hashmap_add(TwoUsers, "Kate", 3),
   AfterRemove = hashmap_remove(ThreeUsers, "Sam"),
-  Sam = hashmap_get(AfterRemove, "Sam"),
+  SamValue = hashmap_get_value(AfterRemove, "Sam"),
   ?assertEqual(1, AfterRemove#hashmap.buckets_size),
-  ?assertEqual(false, Sam).
+  ?assertEqual(false, SamValue).
 
 
 get_test() ->
   Users = hashmap_init(),
   OneUser = hashmap_add(Users, "John", 1),
   TwoUsers = hashmap_add(OneUser, "Sam", 2),
-  Sam = hashmap_get(TwoUsers, "Sam"),
-  Unknown = hashmap_get(TwoUsers, "Unknown"),
-  ?assertEqual("Sam", Sam#node.key),
-  ?assertEqual(false, Unknown).
+  SamValue = hashmap_get_value(TwoUsers, "Sam"),
+  UnknownValue = hashmap_get_value(TwoUsers, "Unknown"),
+  ?assertEqual(2, SamValue),
+  ?assertEqual(false, UnknownValue).
 
 
 filter_test() ->
@@ -74,12 +74,12 @@ map_test() ->
           }
       end
     ),
-  John = hashmap_get(NewUsers, "John"),
-  Sam = hashmap_get(NewUsers, "Sam"),
-  Kate = hashmap_get(NewUsers, "Kate"),
-  ?assertEqual(3, John#node.value),
-  ?assertEqual(6, Sam#node.value),
-  ?assertEqual(9, Kate#node.value).
+  JohnValue = hashmap_get_value(NewUsers, "John"),
+  SamValue = hashmap_get_value(NewUsers, "Sam"),
+  KateValue = hashmap_get_value(NewUsers, "Kate"),
+  ?assertEqual(3, JohnValue),
+  ?assertEqual(6, SamValue),
+  ?assertEqual(9, KateValue).
 
 
 fold_test() ->
@@ -87,7 +87,7 @@ fold_test() ->
   OneUser = hashmap_add(Users, "John", 1),
   TwoUsers = hashmap_add(OneUser, "Sam", 2),
   ThreeUsers = hashmap_add(TwoUsers, "Kate", 3),
-  Result = hashmap_foldl(ThreeUsers, fun (Element, Acc) -> Acc + Element#node.value end, 0),
+  Result = hashmap_fold(ThreeUsers, fun (Element, Acc) -> Acc + Element#node.value end, 0),
   ?assertEqual(6, Result).
 
 
