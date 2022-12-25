@@ -59,15 +59,15 @@ get_bucket_index(Hashmap, Key) ->
   end.
 
 
-search_chain_key(Chain, Key, HashCode) -> search_chain_key(Chain, Key, HashCode, 1).
+search_bucket_node(Chain, Key, HashCode) -> search_bucket_node(Chain, Key, HashCode, 1).
 
-search_chain_key([], _, _, _) -> false;
+search_bucket_node([], _, _, _) -> false;
 
-search_chain_key(Chain, Key, HashCode, I) ->
+search_bucket_node(Chain, Key, HashCode, I) ->
   [Node | Tail] = Chain,
   case ((Node#node.key == Key) and (Node#node.hashcode == HashCode)) of
     true -> {Node, I};
-    false -> search_chain_key(Tail, Key, HashCode, I + 1)
+    false -> search_bucket_node(Tail, Key, HashCode, I + 1)
   end.
 
 
@@ -79,7 +79,7 @@ hashmap_remove(Hashmap, Key) ->
     [] -> Hashmap;
 
     _ ->
-      SearchResult = search_chain_key(Bucket, Key, HashCode),
+      SearchResult = search_bucket_node(Bucket, Key, HashCode),
       case SearchResult of
         false -> Hashmap;
 
@@ -112,7 +112,7 @@ hashmap_get_value(Hashmap, Key) ->
     [] -> false;
 
     Chain ->
-      case search_chain_key(Chain, Key, HashCode) of
+      case search_bucket_node(Chain, Key, HashCode) of
         false -> false;
         {Node, _} -> Node#node.value
       end
@@ -152,7 +152,7 @@ hashmap_add(Hashmap, Key, Value) ->
       end;
 
     Chain ->
-      SearchResult = search_chain_key(Chain, Key, HashCode),
+      SearchResult = search_bucket_node(Chain, Key, HashCode),
       case SearchResult of
         false ->
           NewNode = #node{key = Key, value = Value, hashcode = HashCode},

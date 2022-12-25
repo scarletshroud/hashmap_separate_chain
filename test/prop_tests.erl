@@ -1,7 +1,7 @@
 -module(prop_tests).
 
 -include_lib("stdlib/include/assert.hrl").
--include_lib("../proper/include/proper.hrl").
+-include_lib("proper/include/proper.hrl").
 -include_lib("src/hashmap.hrl").
 
 -import(
