@@ -36,7 +36,7 @@ prop_add_element() ->
     {List, {Key, Value}},
     {list({integer(), integer()}), {integer(), integer()}},
     ?IMPLIES(
-      begin Hashmap = hashmap_init_from_list(List), hashmap_get_value(Hashmap, Key) == false end,
+      begin Hashmap = hashmap_init_from_list(List), hashmap_get_value(Hashmap, Key) == undefined end,
       begin
         Hashmap = hashmap_init_from_list(List),
         NewHashmap = hashmap_add(Hashmap, Key, Value),
@@ -47,15 +47,15 @@ prop_add_element() ->
 
 check_hashmap_removal(OldHashmap, NewHashmap, Key, OldElement) ->
   case OldElement of
-    false ->
+    undefined ->
       (OldHashmap#hashmap.elements_size == NewHashmap#hashmap.elements_size)
       and
-      (hashmap_get_value(NewHashmap, Key) == false);
+      (hashmap_get_value(NewHashmap, Key) == undefined);
 
     _ ->
       (OldHashmap#hashmap.elements_size - 1 == NewHashmap#hashmap.elements_size)
       and
-      (hashmap_get_value(NewHashmap, Key) == false)
+      (hashmap_get_value(NewHashmap, Key) == undefined)
   end.
 
 

@@ -61,7 +61,7 @@ get_bucket_index(Hashmap, Key) ->
 
 search_bucket_node(Chain, Key, HashCode) -> search_bucket_node(Chain, Key, HashCode, 1).
 
-search_bucket_node([], _, _, _) -> false;
+search_bucket_node([], _, _, _) -> undefined;
 
 search_bucket_node(Chain, Key, HashCode, I) ->
   [Node | Tail] = Chain,
@@ -81,7 +81,7 @@ hashmap_remove(Hashmap, Key) ->
     _ ->
       SearchResult = search_bucket_node(Bucket, Key, HashCode),
       case SearchResult of
-        false -> Hashmap;
+        undefined -> Hashmap;
 
         {_, NodeIndex} ->
           NewBucket = lists:sublist(Bucket, NodeIndex - 1) ++ lists:nthtail(NodeIndex, Bucket),
@@ -109,11 +109,11 @@ hashmap_get_value(Hashmap, Key) ->
   HashCode = phash2(Key),
   Head = array:get(Index, Hashmap#hashmap.buckets),
   case Head of
-    [] -> false;
+    [] -> undefined;
 
     Chain ->
       case search_bucket_node(Chain, Key, HashCode) of
-        false -> false;
+        undefined -> undefined;
         {Node, _} -> Node#node.value
       end
   end.
@@ -154,7 +154,7 @@ hashmap_add(Hashmap, Key, Value) ->
     Chain ->
       SearchResult = search_bucket_node(Chain, Key, HashCode),
       case SearchResult of
-        false ->
+        undefined ->
           NewNode = #node{key = Key, value = Value, hashcode = HashCode},
           #hashmap{
             buckets = array:set(Index, [NewNode | Chain], Hashmap#hashmap.buckets),
@@ -256,7 +256,7 @@ compare_buckets(FirstHashmap, SecondHashmap) ->
     fun
       (Element, Acc) ->
         case (hashmap_get_value(SecondHashmap, Element#node.key)) of
-          false -> false;
+          undefined -> false;
 
           Value ->
             case Element#node.value == Value of

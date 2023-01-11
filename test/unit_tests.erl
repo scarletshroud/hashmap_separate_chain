@@ -35,7 +35,7 @@ remove_test() ->
   AfterRemove = hashmap_remove(ThreeUsers, "Sam"),
   SamValue = hashmap_get_value(AfterRemove, "Sam"),
   ?assertEqual(1, AfterRemove#hashmap.buckets_size),
-  ?assertEqual(false, SamValue).
+  ?assertEqual(undefined, SamValue).
 
 
 get_test() ->
@@ -45,7 +45,7 @@ get_test() ->
   SamValue = hashmap_get_value(TwoUsers, "Sam"),
   UnknownValue = hashmap_get_value(TwoUsers, "Unknown"),
   ?assertEqual(2, SamValue),
-  ?assertEqual(false, UnknownValue).
+  ?assertEqual(undefined, UnknownValue).
 
 
 filter_test() ->
