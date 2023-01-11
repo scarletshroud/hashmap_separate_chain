@@ -107,15 +107,10 @@ hashmap_remove(Hashmap, Key) ->
 hashmap_get_value(Hashmap, Key) ->
   Index = get_bucket_index(Hashmap, Key),
   HashCode = phash2(Key),
-  Head = array:get(Index, Hashmap#hashmap.buckets),
-  case Head of
-    [] -> undefined;
-
-    Chain ->
-      case search_bucket_node(Chain, Key, HashCode) of
-        undefined -> undefined;
-        {Node, _} -> Node#node.value
-      end
+  Chain = array:get(Index, Hashmap#hashmap.buckets),
+  case search_bucket_node(Chain, Key, HashCode) of
+    undefined -> undefined;
+    {Node, _} -> Node#node.value
   end.
 
 
