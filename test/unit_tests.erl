@@ -22,7 +22,8 @@ add_test() ->
   Genders = hashmap_init(),
   OneGender = hashmap_add(Genders, "Male", 1),
   TwoGenders = hashmap_add(OneGender, "Female", 2),
-  GenderValue = hashmap_get_value(TwoGenders, "Male"),
+  {Status, GenderValue} = hashmap_get_value(TwoGenders, "Male"),
+  ?assertEqual(ok, Status),
   ?assertEqual(1, GenderValue),
   ?assertEqual(2, TwoGenders#hashmap.buckets_size).
 
@@ -33,19 +34,22 @@ remove_test() ->
   TwoUsers = hashmap_add(OneUser, "Sam", 2),
   ThreeUsers = hashmap_add(TwoUsers, "Kate", 3),
   AfterRemove = hashmap_remove(ThreeUsers, "Sam"),
-  SamValue = hashmap_get_value(AfterRemove, "Sam"),
+  {Status, SamValue} = hashmap_get_value(AfterRemove, "Sam"),
+  ?assertEqual(badkey, Status),
   ?assertEqual(1, AfterRemove#hashmap.buckets_size),
-  ?assertEqual(undefined, SamValue).
+  ?assertEqual("Sam", SamValue).
 
 
 get_test() ->
   Users = hashmap_init(),
   OneUser = hashmap_add(Users, "John", 1),
   TwoUsers = hashmap_add(OneUser, "Sam", 2),
-  SamValue = hashmap_get_value(TwoUsers, "Sam"),
-  UnknownValue = hashmap_get_value(TwoUsers, "Unknown"),
+  {Status, SamValue} = hashmap_get_value(TwoUsers, "Sam"),
+  ?assertEqual(ok, Status),
   ?assertEqual(2, SamValue),
-  ?assertEqual(undefined, UnknownValue).
+  {SecondGetStatus, UnknownValue} = hashmap_get_value(TwoUsers, "Unknown"),
+  ?assertEqual(badkey, SecondGetStatus),
+  ?assertEqual("Unknown", UnknownValue).
 
 
 filter_test() ->
@@ -74,11 +78,14 @@ map_test() ->
           }
       end
     ),
-  JohnValue = hashmap_get_value(NewUsers, "John"),
-  SamValue = hashmap_get_value(NewUsers, "Sam"),
-  KateValue = hashmap_get_value(NewUsers, "Kate"),
+  {Status, JohnValue} = hashmap_get_value(NewUsers, "John"),
+  ?assertEqual(ok, Status),
   ?assertEqual(3, JohnValue),
+  {SecondGetStatus, SamValue} = hashmap_get_value(NewUsers, "Sam"),
+  ?assertEqual(ok, SecondGetStatus),
   ?assertEqual(6, SamValue),
+  {ThirdGetStatus, KateValue} = hashmap_get_value(NewUsers, "Kate"),
+  ?assertEqual(ok, ThirdGetStatus),
   ?assertEqual(9, KateValue).
 
 
@@ -159,5 +166,5 @@ is_equal_test() ->
   TwoHuman = hashmap_add(OneHuman, "Sam", 2),
   ThreeHuman = hashmap_add(TwoHuman, "Egor", 2),
   ?assert(hashmap_is_equal(ThreeUsers, ThreePersons)),
-  ?assertEqual(false, hashmap_is_equal(ThreeUsers, ThreeMen)),
+  ?assert(hashmap_is_equal(ThreeUsers, ThreeMen)),
   ?assertEqual(false, hashmap_is_equal(ThreeUsers, ThreeHuman)).

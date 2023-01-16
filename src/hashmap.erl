@@ -45,6 +45,14 @@ hashmap_init(Size) ->
   #hashmap{buckets = FilledBuckets, buckets_amount = Size, buckets_size = 0, elements_size = 0}.
 
 
+hashmap_init(Buckets, BucketsAmount, BucketsSize, ElementsSize) ->
+  #hashmap{
+    buckets = Buckets,
+    buckets_amount = BucketsAmount,
+    buckets_size = BucketsSize,
+    elements_size = ElementsSize
+  }.
+
 hashmap_init_from_list(List) ->
   Empty = hashmap_init(),
   hashmap_fill(Empty, List).
@@ -94,12 +102,12 @@ hashmap_remove(Hashmap, Key) ->
               NewBuckets = array:set(Index, NewBucket, Hashmap#hashmap.buckets),
               BucketsSize = Hashmap#hashmap.buckets_size
           end,
-          #hashmap{
-            buckets = NewBuckets,
-            buckets_amount = Hashmap#hashmap.buckets_amount,
-            buckets_size = BucketsSize,
-            elements_size = Hashmap#hashmap.elements_size - 1
-          }
+          hashmap_init(
+            NewBuckets,
+            Hashmap#hashmap.buckets_amount,
+            BucketsSize,
+            Hashmap#hashmap.elements_size - 1
+          )
       end
   end.
 
@@ -109,8 +117,8 @@ hashmap_get_value(Hashmap, Key) ->
   HashCode = phash2(Key),
   Chain = array:get(Index, Hashmap#hashmap.buckets),
   case search_bucket_node(Chain, Key, HashCode) of
-    undefined -> undefined;
-    {Node, _} -> Node#node.value
+    {Node, _} -> {ok, Node#node.value};
+    undefined -> {badkey, Key}
   end.
 
 
@@ -135,12 +143,12 @@ hashmap_add(Hashmap, Key, Value) ->
       NewNode = #node{key = Key, value = Value, hashcode = HashCode},
       NewBuckets = array:set(Index, [NewNode], Hashmap#hashmap.buckets),
       NewHashmap =
-        #hashmap{
-          buckets = NewBuckets,
-          buckets_amount = Hashmap#hashmap.buckets_amount,
-          buckets_size = Hashmap#hashmap.buckets_size + 1,
-          elements_size = Hashmap#hashmap.elements_size + 1
-        },
+        hashmap_init(
+          NewBuckets,
+          Hashmap#hashmap.buckets_amount,
+          Hashmap#hashmap.buckets_size + 1,
+          Hashmap#hashmap.elements_size + 1
+        ),
       case (Hashmap#hashmap.buckets_size + 1) / Hashmap#hashmap.buckets_amount >= ?LOAD_LIMIT of
         true -> grow_hashmap(NewHashmap);
         false -> NewHashmap
@@ -151,24 +159,25 @@ hashmap_add(Hashmap, Key, Value) ->
       case SearchResult of
         undefined ->
           NewNode = #node{key = Key, value = Value, hashcode = HashCode},
-          #hashmap{
-            buckets = array:set(Index, [NewNode | Chain], Hashmap#hashmap.buckets),
-            buckets_amount = Hashmap#hashmap.buckets_amount,
-            buckets_size = Hashmap#hashmap.buckets_size,
-            elements_size = Hashmap#hashmap.elements_size + 1
-          };
+          NewBuckets = array:set(Index, [NewNode | Chain], Hashmap#hashmap.buckets),
+          hashmap_init(
+            NewBuckets,
+            Hashmap#hashmap.buckets_amount,
+            Hashmap#hashmap.buckets_size,
+            Hashmap#hashmap.elements_size + 1
+          );
 
         {_, NodeIndex} ->
           NewNode = #node{key = Key, value = Value, hashcode = HashCode},
           NewBucket =
             lists:sublist(Bucket, NodeIndex - 1) ++ [NewNode] ++ lists:nthtail(NodeIndex, Bucket),
           NewBuckets = array:set(Index, NewBucket, Hashmap#hashmap.buckets),
-          #hashmap{
-            buckets = NewBuckets,
-            buckets_amount = Hashmap#hashmap.buckets_amount,
-            buckets_size = Hashmap#hashmap.buckets_size,
-            elements_size = Hashmap#hashmap.elements_size
-          }
+          hashmap_init(
+            NewBuckets,
+            Hashmap#hashmap.buckets_amount,
+            Hashmap#hashmap.buckets_size,
+            Hashmap#hashmap.elements_size
+          )
       end
   end.
 
@@ -203,12 +212,7 @@ hashmap_filter(Hashmap, Pred) ->
       0,
       NewBuckets
     ),
-  #hashmap{
-    buckets = NewBuckets,
-    buckets_amount = Hashmap#hashmap.buckets_amount,
-    buckets_size = Size,
-    elements_size = Hashmap#hashmap.elements_size
-  }.
+  hashmap_init(NewBuckets, Hashmap#hashmap.buckets_amount, Size, Hashmap#hashmap.elements_size).
 
 
 hashmap_map(Hashmap, Fun) ->
@@ -223,12 +227,12 @@ hashmap_map(Hashmap, Fun) ->
       end,
       Hashmap#hashmap.buckets
     ),
-  #hashmap{
-    buckets = NewBuckets,
-    buckets_amount = Hashmap#hashmap.buckets_amount,
-    buckets_size = Hashmap#hashmap.buckets_size,
-    elements_size = Hashmap#hashmap.elements_size
-  }.
+  hashmap_init(
+    NewBuckets,
+    Hashmap#hashmap.buckets_amount,
+    Hashmap#hashmap.buckets_size,
+    Hashmap#hashmap.elements_size
+  ).
 
 
 hashmap_fold(Hashmap, Fun, InitAcc) ->
@@ -251,13 +255,8 @@ compare_buckets(FirstHashmap, SecondHashmap) ->
     fun
       (Element, Acc) ->
         case (hashmap_get_value(SecondHashmap, Element#node.key)) of
-          undefined -> false;
-
-          Value ->
-            case Element#node.value == Value of
-              true -> Acc;
-              false -> false
-            end
+          {ok, _} -> Acc;
+          {badkey, _} -> false
         end
     end,
     true
@@ -265,19 +264,20 @@ compare_buckets(FirstHashmap, SecondHashmap) ->
 
 
 hashmap_is_equal(FirstHashmap, SecondHashmap) ->
-  case
-  (FirstHashmap#hashmap.buckets_amount == SecondHashmap#hashmap.buckets_amount)
-  and
-  (FirstHashmap#hashmap.elements_size == SecondHashmap#hashmap.elements_size) of
+  case (FirstHashmap#hashmap.elements_size == SecondHashmap#hashmap.elements_size) of
     true -> compare_buckets(FirstHashmap, SecondHashmap);
     false -> false
   end.
 
 
-hashmap_merge(FirstHashmap, SecondHashmap) ->
-  case FirstHashmap#hashmap.buckets_amount > SecondHashmap#hashmap.buckets_amount of
-    true -> NewHashmap = hashmap_init(FirstHashmap#hashmap.buckets_amount);
-    false -> NewHashmap = hashmap_init(SecondHashmap#hashmap.buckets_amount)
-  end,
-  FirstMerge = rearrange_hashmap(FirstHashmap, NewHashmap),
-  rearrange_hashmap(SecondHashmap, FirstMerge).
+hashmap_merge(A, B) ->
+  {Base, Additional} =
+    case A#hashmap.buckets_amount > B#hashmap.buckets_amount of
+      true -> {A, B};
+      false -> {B, A}
+    end,
+  hashmap_fold(
+    Base,
+    fun (Element, Hashmap) -> hashmap_add(Hashmap, Element#node.key, Element#node.value) end,
+    Additional
+  ).

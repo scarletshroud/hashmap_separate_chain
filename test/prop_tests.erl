@@ -26,37 +26,26 @@
   ]
 ).
 
-check_hashmap_addition(OldHashmap, NewHashmap, Key) ->
-  (OldHashmap#hashmap.elements_size + 1 == NewHashmap#hashmap.elements_size)
-  and
-  (hashmap_get_value(NewHashmap, Key) /= false).
-
 prop_add_element() ->
   ?FORALL(
     {List, {Key, Value}},
     {list({integer(), integer()}), {integer(), integer()}},
     ?IMPLIES(
-      begin Hashmap = hashmap_init_from_list(List), hashmap_get_value(Hashmap, Key) == undefined end,
+      begin
+        Hashmap = hashmap_init_from_list(List),
+        {Status, _} = hashmap_get_value(Hashmap, Key),
+        Status == badkey
+      end,
       begin
         Hashmap = hashmap_init_from_list(List),
         NewHashmap = hashmap_add(Hashmap, Key, Value),
-        check_hashmap_addition(Hashmap, NewHashmap, Key)
+        case hashmap_get_value(NewHashmap, Key) of
+          {ok, Value} -> Hashmap#hashmap.elements_size + 1 == NewHashmap#hashmap.elements_size;
+          {badkey, Value} -> false
+        end
       end
     )
   ).
-
-check_hashmap_removal(OldHashmap, NewHashmap, Key, OldElement) ->
-  case OldElement of
-    undefined ->
-      (OldHashmap#hashmap.elements_size == NewHashmap#hashmap.elements_size)
-      and
-      (hashmap_get_value(NewHashmap, Key) == undefined);
-
-    _ ->
-      (OldHashmap#hashmap.elements_size - 1 == NewHashmap#hashmap.elements_size)
-      and
-      (hashmap_get_value(NewHashmap, Key) == undefined)
-  end.
 
 
 prop_remove_element() ->
@@ -65,11 +54,15 @@ prop_remove_element() ->
     {list({integer(), integer()}), {integer(), integer()}},
     begin
       Hashmap = hashmap_init_from_list(List),
-      OldElementValue = hashmap_get_value(Hashmap, Key),
+      {Status, _} = hashmap_get_value(Hashmap, Key),
       NewHashmap = hashmap_remove(Hashmap, Key),
-      check_hashmap_removal(Hashmap, NewHashmap, Key, OldElementValue)
+      case Status of
+        ok -> Hashmap#hashmap.elements_size - 1 == NewHashmap#hashmap.elements_size;
+        badkey -> Hashmap#hashmap.elements_size == NewHashmap#hashmap.elements_size
+      end
     end
   ).
+
 
 prop_merge_neutral_element() ->
   ?FORALL(
